@@ -126,11 +126,37 @@ while writing its PID to `record.pid`. PipeWire needs the real
 `--setup` also rebinds the GNOME hotkeys to the checkout it runs from;
 clear `XDG_CURRENT_DESKTOP` to skip that.
 
-## Possible improvements
+## Fixing misheard words
 
-- A transcript log plus a routine for turning recurring mishearings into
-  `[replacements]`, and matching that ignores spacing inside words so one
-  entry covers "Mono CI C D" and "mono CICD".
+When the owner says something like "it wrote cube CTL, it should be
+kubectl", add the heard form to `[replacements]` in
+`~/.config/speakeasy/config.toml`, never the repo's `config.toml`:
+
+- Key is the correct text, value is a list of heard forms. If the key
+  exists, append to its list; don't replace it.
+- Matching ignores case and treats spaces, hyphens, dots and slashes as the
+  same, so one entry covers "cube CTL" and "Cube-CTL". Skip variants
+  that only differ that way.
+- Keep heard forms specific. Matching is whole-word, but a short heard
+  form like "cp" also gets replaced where it was meant literally.
+- Check the file still parses (`./speakeasy -v`). It's read on every
+  dictation, so there's nothing to restart.
+
+Only generic terms (tool names anyone might say) belong in the repo's
+`config.toml`; work and personal terms stay in the personal file.
+
+## Next steps
+
+- After the owner's next login, remove `focused-window@whisper-local` from
+  `org.gnome.shell enabled-extensions`. It's the extension's pre-rename ID;
+  the files are gone and `focused-window@speakeasy` replaces it. Removing it
+  before then unloads the running copy and Enter stops working until login.
+- Choose a licence (MIT suggested). The repo is public without one.
+- Optional `./speakeasy --fix "<heard>" "<correct>"` to add a replacement
+  without an agent. Only if the routine above turns out to be a chore.
+- Matching that also ignores spacing inside words, so "cubectl" covers
+  "cube CTL" and "cube C T L". Risk: short entries match across word
+  boundaries.
 - Background audio from the laptop's own speakers gets transcribed during
   pauses ("90 degree bend" from a stream came out as "90 degree bed"). Fix:
   PipeWire `libpipewire-module-echo-cancel` with `libspa-aec-webrtc` (both
