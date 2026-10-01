@@ -182,5 +182,8 @@ def _gnome_bind(path_id: str, name: str, command: str, binding: str) -> None:
         paths.append(path)  # keep the user's other shortcuts
         subprocess.run(["gsettings", "set", MEDIA_KEYS, "custom-keybindings", str(paths)], check=True)
     schema = f"{MEDIA_KEYS}.custom-keybinding:{path}"
+    # gsd-media-keys doesn't retry a key it failed to grab (e.g. while another
+    # shortcut held it), but clearing and setting the binding makes it try again.
+    subprocess.run(["gsettings", "set", schema, "binding", ""], check=True)
     for key, value in (("name", name), ("command", command), ("binding", binding)):
         subprocess.run(["gsettings", "set", schema, key, value], check=True)
