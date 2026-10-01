@@ -1,0 +1,101 @@
+# speakeasy defaults. Everything runs locally; no API keys, no cloud.
+#
+# Don't edit this file for personal settings. Put them in
+# ~/.config/speakeasy/config.toml, which overrides this one: tables merge
+# key by key, and any other value (including lists) replaces the default.
+# `./speakeasy --setup` creates it and writes the mic it detects there.
+
+# Speech-to-text backend: "parakeet" or "whisper". Each has its own section below.
+engine = "parakeet"
+# Keep the model loaded in a background worker for this many minutes after the
+# last dictation, so it isn't reloaded on every press (~1.3 GB RAM for
+# Parakeet). The worker starts on the first press and loads while you talk.
+# 0 = load the model in every hotkey press instead.
+keep_loaded_minutes = 10
+
+[parakeet]
+# NVIDIA Parakeet via onnx-asr. English only, and the faster and more accurate
+# of the two. Model files live in models/<model name minus "nemo-">.
+model = "nemo-parakeet-tdt-0.6b-v2"
+# int8 is faster on CPU; set to "" for full precision.
+quantization = "int8"
+# Parakeet can't take more than ~20-30 s at once. Longer recordings are split
+# at pauses into chunks no longer than this.
+max_chunk_seconds = 20
+# Transcribe long recordings in chunks while you're still talking, so stopping
+# only waits for the last chunk. Needs the worker (keep_loaded_minutes > 0).
+stream = true
+
+[whisper]
+# Model size: tiny | base | small | medium | large-v3 | large-v3-turbo | distil-large-v3.5 ...
+size = "small"
+# compute type for CPU: int8 (fast, low RAM) | int8_float32 | float32
+compute_type = "int8"
+# Language code (e.g. "en"), or "auto" to detect.
+language = "en"
+# Voice-activity filter. Trims silence, but can drop short or quiet speech.
+vad_filter = false
+# Terms Whisper should expect (Parakeet ignores this). Passed as a prompt, so
+# it nudges spelling but doesn't guarantee it. Keep it short: only ~220
+# tokens of prompt count.
+vocabulary = ["opencode", "ydotool", "Anthropic", "Claude"]
+
+[replacements]
+# Fixed after transcription, every time, for any engine. Key is the correct
+# text, value is the list of ways it gets misheard. Matching ignores case and
+# treats spaces, hyphens, dots and slashes as interchangeable. Personal entries
+# in your own config are added to these.
+"opencode" = ["open code"]
+"ydotool" = ["why do tool", "YDO tool", "Y do tool"]
+"Anthropic" = ["enthropic", "anthropic"]
+"Systran" = ["cistern"]
+
+[cleanup]
+# Hesitation words removed from the transcript, with the comma or period
+# after them. Whole words only, case-insensitive. Empty list = keep everything.
+fillers = ["um", "umm", "uh", "uhm", "uhh", "hmm", "hm", "erm", "er", "ah", "mm"]
+
+[audio]
+# ffmpeg capture backend: "pulse" (PipeWire/PulseAudio) or "alsa".
+backend = "pulse"
+# Input device name, or "default" for the system default. `--setup` finds the
+# mic that actually hears you and writes it to your personal config.
+device = "default"
+# Safety cap so a forgotten recording can't run forever.
+max_seconds = 300
+
+[hotkeys]
+# GNOME shortcut syntax. `./speakeasy --setup` binds these; re-run it after
+# changing them. Super+/ and Super+' by default.
+toggle = "<Super>slash"
+cancel = "<Super>apostrophe"
+
+[output]
+# type_text : type into the focused window (also copies to the clipboard)
+# clipboard : copy only
+# stdout    : print, for testing or piping
+mode = "type_text"
+# Add a trailing space after inserted text. Ignored when press_enter is on.
+trailing_space = true
+# Press Enter after the text, so it's sent straight away.
+press_enter = true
+# Only press Enter when the focused window's title or app contains one of these
+# (case-insensitive). Anywhere else the text is inserted but not sent. Needs
+# the focused-window GNOME extension; without it Enter is never pressed.
+# An empty list means press Enter everywhere.
+# opencode sets the terminal title to "OC | <session title>".
+enter_only_in = ["opencode", "oc | "]
+# Paste instead of typing when the focused app matches one of these. Much
+# faster for long text. Only list apps where paste_keys pastes: terminals.
+paste_in = ["gnome-terminal"]
+paste_keys = "ctrl+shift+v"
+# Wait between pasting and Enter, so the terminal has the text first.
+paste_enter_delay_ms = 150
+# Delay between typed keys when typing instead of pasting.
+key_delay_ms = 4
+# Notifications for recording / transcribing / done:
+#   transient : pop up briefly, update in place, and close themselves
+#   off       : none, except errors
+#   normal    : stay in the notification list
+# Errors (e.g. typing failed) always show and stay in the list.
+notifications = "transient"

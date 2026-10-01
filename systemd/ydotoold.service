@@ -1,0 +1,12 @@
+[Unit]
+Description=ydotool daemon (virtual input for Wayland auto-typing)
+Documentation=man:ydotoold(8)
+
+[Service]
+# Ubuntu's ydotoold 0.1.8 takes no flags and always listens on /tmp/.ydotool_socket.
+ExecStart=/usr/bin/ydotoold
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=default.target

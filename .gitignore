@@ -1,0 +1,24 @@
+# python venv
+/venv
+__pycache__/
+*.pyc
+
+# downloaded whisper models (large, re-downloaded on first run)
+/models
+*.bin
+*.pt
+
+# recorded / temp audio
+*.wav
+*.flac
+*.mp3
+recordings/
+
+# environment variables (project needs none, excluded defensively)
+.env
+.env.*
+
+# editor / OS
+.idea/
+.vscode/
+.DS_Store

@@ -1,0 +1,7 @@
+{
+  "uuid": "focused-window@speakeasy",
+  "name": "Focused Window (speakeasy)",
+  "description": "Exposes the focused window's app and title over D-Bus, so speakeasy only presses Enter in allowed apps",
+  "shell-version": ["46"],
+  "version": 1
+}

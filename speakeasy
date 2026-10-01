@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Speakeasy. First call starts recording, second stops and types the text.
+# The hotkeys run this file.
+set -euo pipefail
+HERE="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+export PYTHONPATH="$HERE/src${PYTHONPATH:+:$PYTHONPATH}"
+exec "$HERE/venv/bin/python" -m speakeasy "$@"
