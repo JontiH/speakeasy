@@ -111,6 +111,11 @@ one in first, detects the mic and binds hotkeys. Machine-specific values
   first keys, so `--delay 400` is added when the socket is missing.
 - Text goes on stdin (`--file -`) so a leading `-` isn't read as a flag.
 - `ydotool key` exits 0 on unknown key names, so a typo fails silently.
+- A long-running ydotoold can hang: it accepts clients but types nothing, and
+  every `ydotool` call blocks. Calls have a timeout (`output.ydotool_timeout_s`);
+  on expiry `output.restart_ydotoold` restarts the user service and retries
+  paste/Enter once. The timing log shows `ydotool timed out` and
+  `restarting ydotoold`.
 
 ## Testing without disturbing the owner
 

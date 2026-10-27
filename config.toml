@@ -93,6 +93,12 @@ paste_keys = "ctrl+shift+v"
 paste_enter_delay_ms = 150
 # Delay between typed keys when typing instead of pasting.
 key_delay_ms = 4
+# Seconds before a stuck ydotool call is killed. Typing adds key_delay_ms per
+# character on top.
+ydotool_timeout_s = 3
+# After a timeout, restart the ydotoold user service. Paste and Enter are then
+# retried once; typed text is not, so it can't be inserted twice.
+restart_ydotoold = true
 # Notifications for recording / transcribing / done:
 #   transient : pop up briefly, update in place, and close themselves
 #   off       : none, except errors

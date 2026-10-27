@@ -22,17 +22,50 @@ def _ydotool_delay() -> str:
     return "0" if YDOTOOL_SOCKET.exists() else "400"
 
 
-def type_text(text: str, key_delay_ms: int) -> bool:
+def _restart_ydotoold() -> bool:
+    mark("restarting ydotoold")
+    try:
+        done = subprocess.run(["systemctl", "--user", "restart", "ydotoold"],
+                              capture_output=True, check=False, timeout=15)
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return False
+    return done.returncode == 0
+
+
+def _run_ydotool(cmd: list[str], out: dict, timeout: float, stdin: bytes | None = None,
+                 retry: bool = False) -> bool:
+    # A hung ydotoold accepts clients but never types, so ydotool blocks
+    # forever. Kill the call at the deadline and optionally restart the
+    # daemon. Typing isn't retried: it may have got partway and would repeat.
+    def attempt() -> bool | None:
+        try:
+            return subprocess.run(cmd, input=stdin, capture_output=True, check=False,
+                                  timeout=timeout).returncode == 0
+        except subprocess.TimeoutExpired:
+            mark(f"ydotool timed out after {timeout:.1f}s")
+            return None
+
+    result = attempt()
+    if result is not None:
+        return result
+    if not out.get("restart_ydotoold", True) or not _restart_ydotoold():
+        return False
+    return bool(retry and attempt())
+
+
+def type_text(text: str, out: dict) -> bool:
     # wtype can't be used: Mutter has no virtual-keyboard protocol.
     # Text goes on stdin so a leading "-" isn't read as a flag.
+    key_delay_ms = out.get("key_delay_ms", 4)
     cmd = ["ydotool", "type", "--key-delay", str(key_delay_ms), "--delay", _ydotool_delay(), "--file", "-"]
-    return subprocess.run(cmd, input=text.encode(), capture_output=True, check=False).returncode == 0
+    timeout = out.get("ydotool_timeout_s", 3) + len(text) * key_delay_ms / 1000
+    return _run_ydotool(cmd, out, timeout, stdin=text.encode())
 
 
-def press_keys(combo: str) -> bool:
+def press_keys(combo: str, out: dict) -> bool:
     # ydotool 0.1.8 exits 0 on unknown key names, so a typo fails silently.
     cmd = ["ydotool", "key", "--delay", _ydotool_delay(), combo]
-    return subprocess.run(cmd, capture_output=True, check=False).returncode == 0
+    return _run_ydotool(cmd, out, out.get("ydotool_timeout_s", 3), retry=True)
 
 
 def focused_window() -> dict | None:
@@ -77,7 +110,7 @@ def emit(cfg: dict, text: str) -> None:
     win = focused_window() if enter_only_in or paste_in else None
     mark(f"focused window: {win}")
     paste = window_matches(win, paste_in, ("wm_class", "app_id"))
-    ok = press_keys(out.get("paste_keys", "ctrl+shift+v")) if paste else type_text(text, out.get("key_delay_ms", 4))
+    ok = press_keys(out.get("paste_keys", "ctrl+shift+v"), out) if paste else type_text(text, out)
     mark("pasted" if paste else "typed")
     if not ok:
         notify("typing failed, text is on the clipboard", important=True)
@@ -91,4 +124,5 @@ def emit(cfg: dict, text: str) -> None:
         # The terminal fetches the clipboard asynchronously; an immediate
         # Enter can land before the pasted text.
         time.sleep(out.get("paste_enter_delay_ms", 150) / 1000)
-    press_keys("Enter")
+    if not press_keys("Enter", out):
+        notify("Enter not sent, text is in the window", important=True)
