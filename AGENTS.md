@@ -131,6 +131,35 @@ while writing its PID to `record.pid`. PipeWire needs the real
 `--setup` also rebinds the GNOME hotkeys to the checkout it runs from;
 clear `XDG_CURRENT_DESKTOP` to skip that.
 
+## Debugging a dictation that didn't send
+
+Symptom: the text appears in the input but Enter isn't pressed (or the text
+lands somewhere odd). It happens in any session, so run this from wherever the
+owner is. Read-only: don't toggle, cancel or stop the worker (see "Testing
+without disturbing the owner").
+
+1. Read the tail of `$XDG_RUNTIME_DIR/speakeasy/timing.log`. The last
+   `focused window:` line starts the failed run. A full run logs `copied`,
+   `focused window`, `pasted`/`typed` (plus `FAILED`), then `enter sent`,
+   `enter FAILED`, `enter skipped: ...` or `enter off`, and `focused window
+   after Enter`. Compare the two window lines to spot a focus change.
+2. Compare that window with the config: paste needs `app_id`/`wm_class` to
+   match `output.paste_in`, Enter needs `title`/`wm_class`/`app_id` to match
+   `output.enter_only_in`. `typed` in a terminal means the window was misread.
+3. Known cause: `wl-copy` opens a `wl-clipboard` surface that briefly holds
+   focus, and `emit()` can read that instead of the terminal. Signature:
+   `focused window: {'wm_class': '', 'title': 'wl-clipboard', ...}` then
+   `typed`. Count them with `grep -c "'title': 'wl-clipboard'" timing.log`.
+4. Rule out the rest: `ydotool timed out` or `restarting ydotoold` lines,
+   `systemctl --user status ydotoold`, a `not sent` notification (the title
+   didn't match), and Enter racing a long paste (`enter sent` with the text
+   not yet in the input, and a long gap or none between `pasted` and
+   `enter sent`).
+5. Report the failed run's log line, which cause it matches, and whether
+   `output.py` already handles it. Fix only if asked. `output.py` runs in the
+   hotkey process, so an edit there is live on the next dictation and needs no
+   `--stop-worker`.
+
 ## Fixing misheard words
 
 When the owner says something like "it wrote cube CTL, it should be
