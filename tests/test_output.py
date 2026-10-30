@@ -72,5 +72,33 @@ class YdotoolTimeout(unittest.TestCase):
         self.assertEqual(seen, [7])
 
 
+class EmitLog(unittest.TestCase):
+    OUT = {"mode": "type_text", "press_enter": True, "enter_only_in": ["oc | "],
+           "paste_in": ["gnome-terminal"], "paste_enter_delay_ms": 0}
+    TERMINAL = {"wm_class": "gnome-terminal-server", "title": "OC | x", "app_id": "org.gnome.Terminal.desktop"}
+
+    def emit(self, windows, out=None):
+        marks = []
+        run, _ = fake_run([completed()] * 3)  # wl-copy, then each ydotool call
+        with mock.patch.object(output.subprocess, "run", run), \
+                mock.patch.object(output, "focused_window", side_effect=windows), \
+                mock.patch.object(output, "mark", marks.append), \
+                mock.patch.object(output, "notify"):
+            output.emit({"output": out or self.OUT}, "hi")
+        return marks
+
+    def test_logs_enter_and_window_after(self):
+        marks = self.emit([self.TERMINAL, self.TERMINAL])
+        self.assertEqual([m for m in marks if not m.startswith("focused")],
+                         ["copied (exit 0)", "pasted", "enter sent"])
+        self.assertTrue(marks[-1].startswith("focused window after Enter"))
+
+    def test_logs_why_enter_was_skipped(self):
+        clipboard = {"wm_class": "", "title": "wl-clipboard", "app_id": "window:1"}
+        marks = self.emit([clipboard])
+        self.assertIn("typed", marks)
+        self.assertIn("enter skipped: window doesn't match enter_only_in", marks)
+
+
 if __name__ == "__main__":
     unittest.main()

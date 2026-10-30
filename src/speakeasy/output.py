@@ -101,7 +101,8 @@ def emit(cfg: dict, text: str) -> None:
         sys.stdout.write(text)
         return
     # Every other mode copies too, so a failed type never loses the text.
-    subprocess.run(["wl-copy"], input=text.encode(), check=False)
+    copied = subprocess.run(["wl-copy"], input=text.encode(), check=False)
+    mark(f"copied (exit {copied.returncode})")
     if mode == "clipboard":
         return
 
@@ -111,18 +112,24 @@ def emit(cfg: dict, text: str) -> None:
     mark(f"focused window: {win}")
     paste = window_matches(win, paste_in, ("wm_class", "app_id"))
     ok = press_keys(out.get("paste_keys", "ctrl+shift+v"), out) if paste else type_text(text, out)
-    mark("pasted" if paste else "typed")
+    mark(("pasted" if paste else "typed") + ("" if ok else " FAILED"))
     if not ok:
         notify("typing failed, text is on the clipboard", important=True)
         return
     if not out.get("press_enter", False):
+        mark("enter off (press_enter=false)")
         return
     if enter_only_in and not window_matches(win, enter_only_in, ("title", "wm_class", "app_id")):
+        mark("enter skipped: window doesn't match enter_only_in")
         notify("not sent: focused window isn't in enter_only_in", final=True)
         return
     if paste:
         # The terminal fetches the clipboard asynchronously; an immediate
         # Enter can land before the pasted text.
         time.sleep(out.get("paste_enter_delay_ms", 150) / 1000)
-    if not press_keys("Enter", out):
+    sent = press_keys("Enter", out)
+    mark("enter sent" if sent else "enter FAILED")
+    # Read after Enter so the check adds no delay before it.
+    mark(f"focused window after Enter: {focused_window()}")
+    if not sent:
         notify("Enter not sent, text is in the window", important=True)
