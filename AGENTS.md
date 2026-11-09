@@ -150,6 +150,9 @@ without disturbing the owner").
    focus, and `emit()` can read that instead of the terminal. Signature:
    `focused window: {'wm_class': '', 'title': 'wl-clipboard', ...}` then
    `typed`. Count them with `grep -c "'title': 'wl-clipboard'" timing.log`.
+   `emit()` re-reads the window up to 5 times, 50 ms apart, logging
+   `focus still on wl-clipboard, re-reading (n/5)`. A failed run with all
+   5 retries means the surface held focus longer than that.
 4. Rule out the rest: `ydotool timed out` or `restarting ydotoold` lines,
    `systemctl --user status ydotoold`, a `not sent` notification (the title
    didn't match), and Enter racing a long paste (`enter sent` with the text

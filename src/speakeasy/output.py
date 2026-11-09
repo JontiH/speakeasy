@@ -87,6 +87,24 @@ def focused_window() -> dict | None:
         return None
 
 
+WL_CLIPBOARD_RETRIES = 5
+WL_CLIPBOARD_RETRY_DELAY_S = 0.05
+
+
+def _focused_window_after_copy() -> dict | None:
+    # wl-copy maps a short-lived "wl-clipboard" surface that can still hold
+    # focus right after it returns, which would mean typing instead of pasting
+    # and no Enter. Give focus up to ~250 ms to return to the real window.
+    win = focused_window()
+    for attempt in range(1, WL_CLIPBOARD_RETRIES + 1):
+        if win is None or win.get("title") != "wl-clipboard":
+            break
+        mark(f"focus still on wl-clipboard, re-reading ({attempt}/{WL_CLIPBOARD_RETRIES})")
+        time.sleep(WL_CLIPBOARD_RETRY_DELAY_S)
+        win = focused_window()
+    return win
+
+
 def window_matches(win: dict | None, patterns: list[str], keys: tuple[str, ...]) -> bool:
     if win is None:
         return False
@@ -108,7 +126,7 @@ def emit(cfg: dict, text: str) -> None:
 
     enter_only_in = out.get("enter_only_in", [])
     paste_in = out.get("paste_in", [])
-    win = focused_window() if enter_only_in or paste_in else None
+    win = _focused_window_after_copy() if enter_only_in or paste_in else None
     mark(f"focused window: {win}")
     paste = window_matches(win, paste_in, ("wm_class", "app_id"))
     ok = press_keys(out.get("paste_keys", "ctrl+shift+v"), out) if paste else type_text(text, out)

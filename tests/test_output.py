@@ -83,9 +83,12 @@ class EmitLog(unittest.TestCase):
         with mock.patch.object(output.subprocess, "run", run), \
                 mock.patch.object(output, "focused_window", side_effect=windows), \
                 mock.patch.object(output, "mark", marks.append), \
-                mock.patch.object(output, "notify"):
+                mock.patch.object(output, "notify"), \
+                mock.patch.object(output.time, "sleep"):
             output.emit({"output": out or self.OUT}, "hi")
         return marks
+
+    CLIPBOARD = {"wm_class": "", "title": "wl-clipboard", "app_id": "window:1"}
 
     def test_logs_enter_and_window_after(self):
         marks = self.emit([self.TERMINAL, self.TERMINAL])
@@ -94,8 +97,24 @@ class EmitLog(unittest.TestCase):
         self.assertTrue(marks[-1].startswith("focused window after Enter"))
 
     def test_logs_why_enter_was_skipped(self):
-        clipboard = {"wm_class": "", "title": "wl-clipboard", "app_id": "window:1"}
-        marks = self.emit([clipboard])
+        bash = {"wm_class": "gnome-terminal-server", "title": "bash", "app_id": ""}
+        marks = self.emit([bash])
+        self.assertIn("pasted", marks)
+        self.assertIn("enter skipped: window doesn't match enter_only_in", marks)
+
+    def test_rereads_window_while_wl_clipboard_has_focus(self):
+        marks = self.emit([self.CLIPBOARD, self.CLIPBOARD, self.TERMINAL, self.TERMINAL])
+        retries = [m for m in marks if m.startswith("focus still on wl-clipboard")]
+        self.assertEqual(len(retries), 2)
+        self.assertIn(f"focused window: {self.TERMINAL}", marks)
+        self.assertIn("pasted", marks)
+        self.assertIn("enter sent", marks)
+
+    def test_wl_clipboard_retries_are_bounded(self):
+        windows = [self.CLIPBOARD] * (output.WL_CLIPBOARD_RETRIES + 1)
+        marks = self.emit(windows)
+        retries = [m for m in marks if m.startswith("focus still on wl-clipboard")]
+        self.assertEqual(len(retries), output.WL_CLIPBOARD_RETRIES)
         self.assertIn("typed", marks)
         self.assertIn("enter skipped: window doesn't match enter_only_in", marks)
 
