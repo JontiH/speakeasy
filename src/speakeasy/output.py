@@ -143,8 +143,10 @@ def emit(cfg: dict, text: str) -> None:
         return
     if paste:
         # The terminal fetches the clipboard asynchronously; an immediate
-        # Enter can land before the pasted text.
-        time.sleep(out.get("paste_enter_delay_ms", 150) / 1000)
+        # Enter can land before the pasted text, and a long paste takes longer.
+        delay_ms = out.get("paste_enter_delay_ms", 150) + len(text) * out.get("paste_enter_delay_per_char_ms", 0.1)
+        mark(f"waiting {delay_ms:.0f} ms before Enter")
+        time.sleep(delay_ms / 1000)
     sent = press_keys("Enter", out)
     mark("enter sent" if sent else "enter FAILED")
     # Read after Enter so the check adds no delay before it.

@@ -156,8 +156,9 @@ without disturbing the owner").
 4. Rule out the rest: `ydotool timed out` or `restarting ydotoold` lines,
    `systemctl --user status ydotoold`, a `not sent` notification (the title
    didn't match), and Enter racing a long paste (`enter sent` with the text
-   not yet in the input, and a long gap or none between `pasted` and
-   `enter sent`).
+   not yet in the input, or the paste dropped). The wait before Enter grows
+   with the text (`paste_enter_delay_ms` plus `paste_enter_delay_per_char_ms`
+   per character) and is logged as `waiting N ms before Enter`.
 5. Report the failed run's log line, which cause it matches, and whether
    `output.py` already handles it. Fix only if asked. `output.py` runs in the
    hotkey process, so an edit there is live on the next dictation and needs no

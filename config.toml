@@ -89,8 +89,10 @@ enter_only_in = ["opencode", "oc | "]
 # faster for long text. Only list apps where paste_keys pastes: terminals.
 paste_in = ["gnome-terminal"]
 paste_keys = "ctrl+shift+v"
-# Wait between pasting and Enter, so the terminal has the text first.
+# Wait between pasting and Enter, so the terminal has the text first: this many
+# ms plus paste_enter_delay_per_char_ms for each character (2,000 chars: 350 ms).
 paste_enter_delay_ms = 150
+paste_enter_delay_per_char_ms = 0.1
 # Delay between typed keys when typing instead of pasting.
 key_delay_ms = 4
 # Seconds before a stuck ydotool call is killed. Typing adds key_delay_ms per

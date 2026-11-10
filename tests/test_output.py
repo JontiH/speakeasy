@@ -74,10 +74,11 @@ class YdotoolTimeout(unittest.TestCase):
 
 class EmitLog(unittest.TestCase):
     OUT = {"mode": "type_text", "press_enter": True, "enter_only_in": ["oc | "],
-           "paste_in": ["gnome-terminal"], "paste_enter_delay_ms": 0}
+           "paste_in": ["gnome-terminal"], "paste_enter_delay_ms": 0,
+           "paste_enter_delay_per_char_ms": 0}
     TERMINAL = {"wm_class": "gnome-terminal-server", "title": "OC | x", "app_id": "org.gnome.Terminal.desktop"}
 
-    def emit(self, windows, out=None):
+    def emit(self, windows, out=None, text="hi"):
         marks = []
         run, _ = fake_run([completed()] * 3)  # wl-copy, then each ydotool call
         with mock.patch.object(output.subprocess, "run", run), \
@@ -85,7 +86,7 @@ class EmitLog(unittest.TestCase):
                 mock.patch.object(output, "mark", marks.append), \
                 mock.patch.object(output, "notify"), \
                 mock.patch.object(output.time, "sleep"):
-            output.emit({"output": out or self.OUT}, "hi")
+            output.emit({"output": out or self.OUT}, text)
         return marks
 
     CLIPBOARD = {"wm_class": "", "title": "wl-clipboard", "app_id": "window:1"}
@@ -93,8 +94,13 @@ class EmitLog(unittest.TestCase):
     def test_logs_enter_and_window_after(self):
         marks = self.emit([self.TERMINAL, self.TERMINAL])
         self.assertEqual([m for m in marks if not m.startswith("focused")],
-                         ["copied (exit 0)", "pasted", "enter sent"])
+                         ["copied (exit 0)", "pasted", "waiting 0 ms before Enter", "enter sent"])
         self.assertTrue(marks[-1].startswith("focused window after Enter"))
+
+    def test_enter_waits_longer_after_a_long_paste(self):
+        out = {**self.OUT, "paste_enter_delay_ms": 150, "paste_enter_delay_per_char_ms": 0.1}
+        marks = self.emit([self.TERMINAL, self.TERMINAL], out, "x" * 2000)
+        self.assertIn("waiting 350 ms before Enter", marks)
 
     def test_logs_why_enter_was_skipped(self):
         bash = {"wm_class": "gnome-terminal-server", "title": "bash", "app_id": ""}
