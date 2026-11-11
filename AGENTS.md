@@ -4,8 +4,9 @@ Local voice dictation for talking to CLI tools (mainly opencode) instead of
 typing. Press a hotkey, talk, press it again, and the text appears in the
 focused window. No API keys, no cloud.
 
-The goal is that `git clone` plus `./install.sh` on another Linux laptop gives
-the same setup the owner has here.
+The goal is that `git clone` plus `./install.sh` on another Linux laptop, or
+`.\install.cmd` on a Windows PC, gives the same setup the owner has here.
+Every change has to keep working on both; see "Windows" below.
 
 ## Git identity
 
@@ -20,11 +21,22 @@ this repo, pass the personal token per command:
 `GH_TOKEN=$(gh auth token --user JontiH) gh repo view JontiH/speakeasy`.
 Pushes go over SSH with the personal key from `core.sshcommand`.
 
-## Development machine
+On the Windows PC there's no local identity and no `gh`. The global identity
+there has the right email but the name "Jonathan Harris", so commit with
+`git -c user.name=JontiH commit ...` and don't change any git config. The
+remote is HTTPS and needs an interactive sign-in, so the owner pushes.
 
-Ubuntu 24.04, GNOME on Wayland, PipeWire (use `wpctl`/`pw-dump`; there's no
-`pactl`). AMD Ryzen 7 PRO 7840U with a Radeon 780M and no NVIDIA GPU, so
-everything runs on the CPU.
+## Development machines
+
+Linux: Ubuntu 24.04, GNOME on Wayland, PipeWire (use `wpctl`/`pw-dump`;
+there's no `pactl`). AMD Ryzen 7 PRO 7840U with a Radeon 780M and no NVIDIA
+GPU, so everything runs on the CPU.
+
+Windows: Windows 10 22H2, Ryzen 5 5600X, checkout in
+`C:\Users\Jonti\Documents\speakeasy`. Python 3.12 and ffmpeg from winget.
+Mics: "Microphone (USB Advanced Audio Device)" (the one to use) and the C920
+webcam, which Windows has as its default. The owner dictates into the
+OpenCode desktop app (`opencode.exe`, title "OpenCode").
 
 ## Layout
 
@@ -71,12 +83,31 @@ everything runs on the CPU.
   process that attaches to its console (doing it in-process would interrupt
   the caller). If that fails it's killed and `recorder.fix_wav_header`
   repairs the sizes. dshow uses `-audio_buffer_size 50`.
+- Mic: dshow has no default device. `audio.device = "default"` asks Windows
+  for its default capture endpoint (`win32.default_capture_name`, Core
+  Audio over COM). If that matches `audio.ignore_devices` (webcams), it
+  takes the first dshow mic that doesn't. `-v` shows the result.
 - Worker IPC: localhost TCP; `worker.addr` holds `<port> <token>`.
 - Notifications: tray tooltip always; pop-ups only for errors unless
-  `notifications = "normal"`. `output.sounds` beeps on start/stop.
+  `notifications = "normal"`. `output.sounds` (off by default: the owner
+  didn't want any sound) plays a soft chime on start/stop; `true` or a
+  volume from 0 to 1.
+- The listener and the worker keep running old code: after a Python change,
+  restart the listener (`--stop-listener`, then `--setup` or start
+  `pythonw -m speakeasy --listen`) as well as `--stop-worker`.
 - Tests must not inject input: `test_output.py` patches `output.WINDOWS`
   and fakes `win32`. Running the Linux tests unpatched on Windows typed into
   the focused window.
+- Testing Linux from the Windows PC: WSL has Ubuntu 24.04 with Python 3.12
+  but no pip/venv. Copy the tree (without venv, models, .git) to `/tmp`,
+  unpack a manylinux numpy wheel (fetched with
+  `pip download numpy --platform manylinux2014_x86_64 --only-binary=:all: --python-version 3.12`)
+  onto `PYTHONPATH`, and run `python3 -m unittest`. Check
+  `git ls-files --eol` too: Git for Windows checks out with CRLF, and
+  `.gitattributes` keeps `speakeasy` and `*.sh` LF in commits.
+- Dictations that "didn't arrive": check `timing.log` first. If it shows
+  `pasted` and `enter sent` into OpenCode, OpenCode was still busy replying
+  and ignored the Enter; Speakeasy did its part.
 
 ## Config
 

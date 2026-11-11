@@ -66,7 +66,16 @@ grey when idle, red while recording, amber while transcribing. Click it for
 a menu. Set `output.sounds = true` for a soft chime when recording starts
 and stops. Errors pop up as notifications.
 
+With `audio.device = "default"`, Speakeasy uses Windows' default recording
+device, but skips webcam mics (`audio.ignore_devices`) for the next mic in
+the list. `.\speakeasy.cmd -v` shows which one it picked.
+
 Use `-From <path or URL>` with `install.cmd` to bring a personal config.
+
+opencode ignores Enter while it's still replying, so a dictation sent then
+stays in the input box. Press Enter once the reply ends, or Ctrl+V if the
+text is gone: every dictation is also on the clipboard. This isn't specific
+to Windows.
 
 ## Use
 
