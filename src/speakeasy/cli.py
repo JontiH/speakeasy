@@ -12,6 +12,7 @@ from .notify import notify
 
 
 def start(cfg: dict) -> None:
+    notify_mod.cue("start")  # before ffmpeg opens the mic, so it isn't recorded
     recorder.start(cfg)
     notify("recording... (run again to stop)")
     worker.ensure_running(cfg)
@@ -20,6 +21,7 @@ def start(cfg: dict) -> None:
 def stop_and_transcribe(cfg: dict) -> None:
     recorder.stop()
     mark("recording stopped")
+    notify_mod.cue("stop")
     if not WAV_FILE.exists() or WAV_FILE.stat().st_size < 1024:
         notify("no audio captured", final=True)
         return
@@ -77,11 +79,24 @@ def show_info(cfg: dict) -> None:
         print(f"model files:    {cached[-1].parent if cached else 'not downloaded'}")
         print(f"faster-whisper: {version('faster-whisper')}")
         print(f"ctranslate2:    {version('ctranslate2')}")
-    print(f"mic:            {cfg['audio']['device']}")
+    mic = cfg["audio"]["device"]
+    if mic == "default" and cfg["audio"]["backend"] == "dshow":
+        try:
+            mic = f"default -> {recorder.input_args(cfg['audio'])[-1].removeprefix('audio=')}"
+        except RuntimeError as exc:
+            mic = f"default ({exc})"
+    print(f"mic:            {mic}")
     print(f"output:         {out['mode']}, press_enter={out.get('press_enter', False)}")
     print(f"keep loaded:    {cfg.get('keep_loaded_minutes', 0)} min")
     print(f"worker:         {'running' if config.WORKER_SOCKET.exists() else 'not running'}")
-    print(f"ydotoold:       {'running' if output.YDOTOOL_SOCKET.exists() else 'not running'}")
+    if config.WINDOWS:
+        from . import winlisten
+
+        print(f"hotkeys:        toggle {cfg['hotkeys'].get('toggle')}, cancel {cfg['hotkeys'].get('cancel')}")
+        print(f"tray listener:  {'running' if winlisten.is_running() else 'not running (speakeasy --listen)'}")
+        print(f"ffmpeg:         {recorder.ffmpeg_exe()}")
+    else:
+        print(f"ydotoold:       {'running' if output.YDOTOOL_SOCKET.exists() else 'not running'}")
     print(f"personal config: {config.USER_CONFIG if config.USER_CONFIG.exists() else 'none'}")
     print(f"recording now:  {'yes' if recorder.is_recording() else 'no'}")
 
@@ -109,6 +124,10 @@ def main(argv: list[str] | None = None) -> None:
     group.add_argument("-v", "--info", action="store_true", help="show engine, model, mic and status")
     group.add_argument("--stop-worker", action="store_true", help="unload the model now (needed after code changes)")
     group.add_argument("--serve", action="store_true", help=argparse.SUPPRESS)
+    if config.WINDOWS:
+        group.add_argument("--listen", action="store_true",
+                           help="run the tray icon that owns the hotkeys (Windows; --setup starts it at login)")
+        group.add_argument("--stop-listener", action="store_true", help="quit the tray icon and its hotkeys")
     args = parser.parse_args(argv)
 
     if args.setup is not None:
@@ -118,7 +137,14 @@ def main(argv: list[str] | None = None) -> None:
         return
     cfg = config.load()
     notify_mod.configure(cfg)
-    if args.serve:
+    if config.WINDOWS and (args.listen or args.stop_listener):
+        from . import winlisten
+
+        if args.listen:
+            winlisten.run()
+        else:
+            print("stopped" if winlisten.stop() else "no listener running")
+    elif args.serve:
         worker.serve()
     elif args.stop_worker:
         print("stopped" if worker.stop() else "no worker running")

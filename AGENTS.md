@@ -50,6 +50,33 @@ everything runs on the CPU.
   extension, then `speakeasy --setup`. Safe to re-run.
 - `tests/`: `./venv/bin/python -m unittest`. Tests redirect
   `XDG_RUNTIME_DIR` and `XDG_CONFIG_HOME` to temp dirs.
+- Windows: `src/speakeasy/win32.py` (ctypes: processes, Ctrl+C to ffmpeg,
+  clipboard, SendInput, focused window, file locks), `winlisten.py` (tray
+  icon + RegisterHotKey, `--listen`), `config.windows.toml` (merged over
+  `config.toml` on Windows), `speakeasy.cmd`, `install.cmd`/`install.ps1`.
+
+## Windows
+
+- Paths: personal config `%APPDATA%\speakeasy\config.toml`, state dir
+  `%TEMP%\speakeasy` (timing.log, listener.log, worker.log). The
+  `XDG_*` overrides still win, which is how tests isolate themselves.
+- Hotkeys: `speakeasy --listen` (pythonw, started from
+  `Startup\Speakeasy.lnk`, made by `--setup`) registers them and runs the
+  cli flows in a thread. `--setup` test-registers each hotkey first and
+  reports clashes. `venv\Lib\site-packages\speakeasy.pth` puts `src/` on
+  the path so the shortcut needs no PYTHONPATH.
+- Never call `os.kill(pid, 0)` on Windows: it terminates the process. Use
+  `win32.pid_alive`, which also checks the exe is ffmpeg (PID reuse).
+- ffmpeg runs with `CREATE_NO_WINDOW`; stop sends Ctrl+C from a helper
+  process that attaches to its console (doing it in-process would interrupt
+  the caller). If that fails it's killed and `recorder.fix_wav_header`
+  repairs the sizes. dshow uses `-audio_buffer_size 50`.
+- Worker IPC: localhost TCP; `worker.addr` holds `<port> <token>`.
+- Notifications: tray tooltip always; pop-ups only for errors unless
+  `notifications = "normal"`. `output.sounds` beeps on start/stop.
+- Tests must not inject input: `test_output.py` patches `output.WINDOWS`
+  and fakes `win32`. Running the Linux tests unpatched on Windows typed into
+  the focused window.
 
 ## Config
 

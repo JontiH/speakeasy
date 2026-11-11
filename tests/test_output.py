@@ -28,7 +28,16 @@ def fake_run(ydotool_results):
     return run, calls
 
 
-class YdotoolTimeout(unittest.TestCase):
+class LinuxPaths(unittest.TestCase):
+    """Runs the Linux code paths on any OS, so the tests never type for real on Windows."""
+
+    def setUp(self):
+        patcher = mock.patch.object(output, "WINDOWS", False)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+
+class YdotoolTimeout(LinuxPaths):
     def press(self, results, out=None):
         run, calls = fake_run(results)
         with mock.patch.object(output.subprocess, "run", run):
@@ -72,7 +81,7 @@ class YdotoolTimeout(unittest.TestCase):
         self.assertEqual(seen, [7])
 
 
-class EmitLog(unittest.TestCase):
+class EmitLog(LinuxPaths):
     OUT = {"mode": "type_text", "press_enter": True, "enter_only_in": ["oc | "],
            "paste_in": ["gnome-terminal"], "paste_enter_delay_ms": 0,
            "paste_enter_delay_per_char_ms": 0}
@@ -123,6 +132,56 @@ class EmitLog(unittest.TestCase):
         self.assertEqual(len(retries), output.WL_CLIPBOARD_RETRIES)
         self.assertIn("typed", marks)
         self.assertIn("enter skipped: window doesn't match enter_only_in", marks)
+
+
+class WindowsEmit(unittest.TestCase):
+    """The Windows path with the Win32 calls faked, so it runs on any OS."""
+
+    OUT = {"mode": "type_text", "press_enter": True, "enter_only_in": ["oc | "],
+           "paste_in": ["windowsterminal.exe", "consolewindowclass"], "paste_keys": "ctrl+v",
+           "paste_enter_delay_ms": 0, "paste_enter_delay_per_char_ms": 0}
+    TERMINAL = {"wm_class": "CASCADIA_HOSTING_WINDOW_CLASS", "title": "OC | x", "app_id": "windowsterminal.exe"}
+    NOTEPAD = {"wm_class": "Notepad", "title": "Untitled - Notepad", "app_id": "notepad.exe"}
+
+    def emit(self, window, out=None, text="hi"):
+        fake = mock.Mock()
+        fake.set_clipboard.return_value = True
+        fake.wait_modifiers_released.return_value = True
+        fake.type_unicode.return_value = True
+        fake.send_keys.return_value = True
+        fake.foreground_window.return_value = window
+        marks = []
+        with mock.patch.object(output, "WINDOWS", True), \
+                mock.patch.object(output, "win32", fake, create=True), \
+                mock.patch.object(output.subprocess, "run", side_effect=AssertionError("no subprocess on Windows")), \
+                mock.patch.object(output, "mark", marks.append), \
+                mock.patch.object(output, "notify"), \
+                mock.patch.object(output.time, "sleep"):
+            output.emit({"output": out or self.OUT}, text)
+        return fake, marks
+
+    def test_terminal_pastes_and_sends(self):
+        fake, marks = self.emit(self.TERMINAL)
+        fake.set_clipboard.assert_called_once_with("hi")
+        fake.wait_modifiers_released.assert_called_once()
+        self.assertEqual([c.args[0] for c in fake.send_keys.call_args_list], ["ctrl+v", "Enter"])
+        fake.type_unicode.assert_not_called()
+        self.assertIn("pasted", marks)
+        self.assertIn("enter sent", marks)
+
+    def test_other_apps_are_typed_without_enter(self):
+        fake, marks = self.emit(self.NOTEPAD)
+        fake.type_unicode.assert_called_once_with("hi", 4)
+        fake.send_keys.assert_not_called()
+        self.assertIn("typed", marks)
+        self.assertIn("enter skipped: window doesn't match enter_only_in", marks)
+
+    def test_clipboard_mode_only_copies(self):
+        fake, marks = self.emit(self.TERMINAL, {"mode": "clipboard"})
+        fake.set_clipboard.assert_called_once_with("hi")
+        fake.send_keys.assert_not_called()
+        fake.type_unicode.assert_not_called()
+        self.assertEqual(marks, ["copied (exit 0)"])
 
 
 if __name__ == "__main__":

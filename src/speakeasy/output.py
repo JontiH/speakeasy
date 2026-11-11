@@ -1,4 +1,10 @@
-"""Getting text into the focused window on GNOME Wayland."""
+"""Getting text into the focused window on GNOME Wayland, or on Windows.
+
+On Windows the clipboard, typing, key presses and the focused window go
+through the Win32 API (win32.py) instead of wl-copy, ydotool and the GNOME
+extension. Everything else, like when to paste and when to press Enter, is
+shared.
+"""
 from __future__ import annotations
 
 import ast
@@ -9,8 +15,11 @@ import sys
 import time
 from pathlib import Path
 
-from .config import mark
+from .config import WINDOWS, mark
 from .notify import notify
+
+if WINDOWS:
+    from . import win32
 
 # Ubuntu's ydotoold 0.1.8 always listens here; 1.x reads YDOTOOL_SOCKET.
 YDOTOOL_SOCKET = Path(os.environ.get("YDOTOOL_SOCKET", "/tmp/.ydotool_socket"))
@@ -54,6 +63,8 @@ def _run_ydotool(cmd: list[str], out: dict, timeout: float, stdin: bytes | None 
 
 
 def type_text(text: str, out: dict) -> bool:
+    if WINDOWS:
+        return win32.type_unicode(text, out.get("key_delay_ms", 4))
     # wtype can't be used: Mutter has no virtual-keyboard protocol.
     # Text goes on stdin so a leading "-" isn't read as a flag.
     key_delay_ms = out.get("key_delay_ms", 4)
@@ -63,6 +74,8 @@ def type_text(text: str, out: dict) -> bool:
 
 
 def press_keys(combo: str, out: dict) -> bool:
+    if WINDOWS:
+        return win32.send_keys(combo)
     # ydotool 0.1.8 exits 0 on unknown key names, so a typo fails silently.
     cmd = ["ydotool", "key", "--delay", _ydotool_delay(), combo]
     return _run_ydotool(cmd, out, out.get("ydotool_timeout_s", 3), retry=True)
@@ -70,6 +83,8 @@ def press_keys(combo: str, out: dict) -> bool:
 
 def focused_window() -> dict | None:
     """App and title of the focused window, from the focused-window GNOME extension."""
+    if WINDOWS:
+        return win32.foreground_window()
     try:
         result = subprocess.run(
             ["gdbus", "call", "--session", "--dest", "org.gnome.Shell",
@@ -112,6 +127,13 @@ def window_matches(win: dict | None, patterns: list[str], keys: tuple[str, ...])
     return any(p.lower() in haystack for p in patterns)
 
 
+def copy(text: str) -> int:
+    """Put text on the clipboard. Returns an exit code: 0 is success."""
+    if WINDOWS:
+        return 0 if win32.set_clipboard(text) else 1
+    return subprocess.run(["wl-copy"], input=text.encode(), check=False).returncode
+
+
 def emit(cfg: dict, text: str) -> None:
     out = cfg["output"]
     mode = out["mode"]
@@ -119,11 +141,13 @@ def emit(cfg: dict, text: str) -> None:
         sys.stdout.write(text)
         return
     # Every other mode copies too, so a failed type never loses the text.
-    copied = subprocess.run(["wl-copy"], input=text.encode(), check=False)
-    mark(f"copied (exit {copied.returncode})")
+    mark(f"copied (exit {copy(text)})")
     if mode == "clipboard":
         return
 
+    if WINDOWS and not win32.wait_modifiers_released():
+        # The hotkey's Win key is still down; typing now would fire shortcuts.
+        mark("modifiers still held after 2 s")
     enter_only_in = out.get("enter_only_in", [])
     paste_in = out.get("paste_in", [])
     win = _focused_window_after_copy() if enter_only_in or paste_in else None

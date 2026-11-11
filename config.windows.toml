@@ -1,0 +1,42 @@
+# Windows defaults, merged over config.toml (same rules: tables merge key by
+# key, other values replace). Your personal config, which on Windows is
+# %APPDATA%\speakeasy\config.toml, still overrides both.
+
+[audio]
+# ffmpeg's DirectShow input. `speakeasy --setup` writes the mic's name, like
+# "Microphone (USB Audio Device)". "default" uses Windows' default recording
+# device, unless its name contains one of ignore_devices; then the first mic
+# that doesn't.
+backend = "dshow"
+# Case-insensitive name fragments of mics "default" should skip. Webcam mics
+# are usually far away and pick up the room.
+ignore_devices = ["webcam", "camera"]
+
+[hotkeys]
+# Same syntax as on Linux: modifiers in angle brackets, then a key name or a
+# single character: <Super> (the Windows key), <Ctrl>, <Alt>, <Shift>.
+# They're registered by the tray listener (`speakeasy --listen`), which
+# `--setup` starts and adds to your Startup folder. Re-run `--setup`, or quit
+# the tray icon and start it again, after changing them.
+toggle = "<Super>slash"
+cancel = "<Super>apostrophe"
+
+[output]
+# Window matching on Windows uses the window title, its class (wm_class) and
+# the program's file name (app_id), e.g. "windowsterminal.exe".
+#
+# Paste with Ctrl+V in terminals, editors and the opencode desktop app; type
+# everywhere else. Typing uses Unicode key events, so any character works.
+paste_in = ["windowsterminal.exe", "consolewindowclass", "code.exe", "opencode.exe"]
+paste_keys = "ctrl+v"
+# ydotool_timeout_s and restart_ydotoold don't apply: Windows uses SendInput.
+#
+# Windows tray notifications pile up in the Action Center, so "transient" here
+# means: no pop-ups, just the tray icon colour (grey idle, red recording,
+# amber transcribing) and a short sound. "normal" also shows a pop-up for each
+# step. Errors always pop up.
+notifications = "transient"
+# A soft chime when recording starts (rising) and stops (falling). The tray
+# icon is often hidden in the overflow area, so this is the easiest way to
+# know it's listening. true, false, or a volume from 0 to 1 (true = 0.15).
+sounds = false

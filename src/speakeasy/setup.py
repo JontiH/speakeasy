@@ -17,8 +17,8 @@ from pathlib import Path
 
 import numpy as np
 
-from . import config
-from .config import USER_CONFIG
+from . import config, recorder
+from .config import USER_CONFIG, WINDOWS
 
 SILENT_DB = -60.0
 
@@ -30,7 +30,8 @@ def run(source: str | None) -> None:
         USER_CONFIG.parent.mkdir(parents=True, exist_ok=True)
         USER_CONFIG.write_text(
             "# Personal settings. Anything here overrides the repo's config.toml.\n"
-            "# Tables merge key by key; lists and values replace the default.\n"
+            "# Tables merge key by key; lists and values replace the default.\n",
+            encoding="utf-8",
         )
         print(f"created {USER_CONFIG}")
     choose_mic()
@@ -53,7 +54,9 @@ def import_personal(source: str) -> None:
 
 
 def list_sources() -> list[tuple[str, str]]:
-    """(name, description) for each capture device, from PipeWire or PulseAudio."""
+    """(name, description) for each capture device, from PipeWire, PulseAudio or DirectShow."""
+    if WINDOWS:
+        return [(name, name) for name in recorder.dshow_devices()]
     if shutil.which("pw-dump"):
         nodes = json.loads(subprocess.run(["pw-dump"], capture_output=True, text=True).stdout or "[]")
         found = []
@@ -88,7 +91,8 @@ def measure(sources: list[tuple[str, str]], backend: str, seconds: int = 4) -> l
         procs = []
         for i, (name, _) in enumerate(sources):
             out = Path(tmp) / f"{i}.wav"
-            cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-f", backend, "-i", name,
+            cmd = [recorder.ffmpeg_exe(), "-hide_banner", "-loglevel", "error", "-y",
+                   *recorder.input_args({"backend": backend, "device": name}),
                    "-t", str(seconds), "-ac", "1", "-ar", "16000", str(out)]
             procs.append((subprocess.Popen(cmd, stdin=subprocess.DEVNULL), out))
         for remaining in range(seconds, 0, -1):
@@ -130,7 +134,8 @@ def choose_mic() -> None:
 def set_user_value(section: str, key: str, value: str) -> None:
     """Set one string in the personal config, leaving the rest of the file as is."""
     USER_CONFIG.parent.mkdir(parents=True, exist_ok=True)
-    text = USER_CONFIG.read_text() if USER_CONFIG.exists() else ""
+    # tomllib reads UTF-8, and Windows would otherwise write the ANSI code page.
+    text = USER_CONFIG.read_text(encoding="utf-8") if USER_CONFIG.exists() else ""
     line = f"{key} = {json.dumps(value)}"
     header = re.search(rf"^\[{re.escape(section)}\][ \t]*$", text, flags=re.MULTILINE)
     if header is None:
@@ -146,7 +151,7 @@ def set_user_value(section: str, key: str, value: str) -> None:
             body = "\n" + line + body
         text = text[: header.end()] + body + text[end:]
     tomllib.loads(text)
-    USER_CONFIG.write_text(text)
+    USER_CONFIG.write_text(text, encoding="utf-8")
 
 
 MEDIA_KEYS = "org.gnome.settings-daemon.plugins.media-keys"
@@ -154,6 +159,9 @@ KEYBINDING_PATH = "/org/gnome/settings-daemon/plugins/media-keys/custom-keybindi
 
 
 def bind_hotkeys(cfg: dict) -> None:
+    if WINDOWS:
+        windows_hotkeys(cfg)
+        return
     keys = cfg.get("hotkeys", {})
     command = str(config.REPO / "speakeasy")
     wanted = [
@@ -170,6 +178,91 @@ def bind_hotkeys(cfg: dict) -> None:
         if binding:
             _gnome_bind(path_id, name, command, binding)
             print(f"bound {binding} to {name}")
+
+
+STARTUP_SHORTCUT = "Speakeasy.lnk"
+
+# Values arrive in environment variables, so paths need no PowerShell quoting.
+_MAKE_SHORTCUT = (
+    "$s = (New-Object -ComObject WScript.Shell).CreateShortcut($env:SE_LNK); "
+    "$s.TargetPath = $env:SE_TARGET; $s.Arguments = $env:SE_ARGS; "
+    "$s.WorkingDirectory = $env:SE_DIR; $s.Description = 'Speakeasy voice dictation hotkeys'; $s.Save()"
+)
+
+
+def startup_dir() -> Path:
+    return Path(os.environ["APPDATA"]) / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup"
+
+
+def link_venv() -> None:
+    """Put src/ on the venv's path, so `pythonw -m speakeasy` works from a shortcut."""
+    if sys.prefix == sys.base_prefix:
+        return  # not in a venv; the launcher sets PYTHONPATH instead
+    pth = Path(sys.prefix) / "Lib" / "site-packages" / "speakeasy.pth"
+    src = str(config.REPO / "src")
+    if not pth.exists() or pth.read_text(encoding="utf-8").strip() != src:
+        pth.write_text(src + "\n", encoding="utf-8")
+
+
+def windows_hotkeys(cfg: dict) -> None:
+    """Start the tray listener that owns the hotkeys, now and at every login."""
+    from . import win32, winlisten
+
+    keys = cfg.get("hotkeys", {})
+    for name in ("toggle", "cancel"):
+        if keys.get(name):
+            try:
+                win32.parse_combo(keys[name])
+            except ValueError as exc:
+                print(f"hotkeys.{name} = {keys[name]!r}: {exc}")
+    link_venv()
+    cmd, env = config.self_command("--listen", console=False)
+    lnk = startup_dir() / STARTUP_SHORTCUT
+    made = subprocess.run(
+        ["powershell", "-NoProfile", "-NonInteractive", "-Command", _MAKE_SHORTCUT],
+        env={**os.environ, "SE_LNK": str(lnk), "SE_TARGET": cmd[0],
+             "SE_ARGS": subprocess.list2cmdline(cmd[1:]), "SE_DIR": str(config.REPO)},
+        capture_output=True, text=True,
+    )
+    if made.returncode == 0:
+        print(f"starts at login: {lnk}")
+    else:
+        print(f"couldn't create {lnk}: {made.stderr.strip()}")
+
+    if winlisten.stop():
+        print("stopped the running tray listener")
+    # Try each hotkey here first, so a clash is reported in this terminal.
+    taken = []
+    for hk_id, (name, what) in enumerate((("toggle", "start / stop and insert"), ("cancel", "cancel")), 0x5000):
+        if not keys.get(name):
+            continue
+        label = winlisten.hotkey_label(keys[name])
+        try:
+            flags, _vks, vk = win32.parse_combo(keys[name])
+        except ValueError:
+            continue
+        if win32.user32.RegisterHotKey(None, hk_id, flags | win32.MOD_NOREPEAT, vk):
+            win32.user32.UnregisterHotKey(None, hk_id)
+            print(f"  {label:12} {what}")
+        else:
+            taken.append(name)
+            print(f"  {label:12} {what}: NOT AVAILABLE, another program or Windows uses it")
+    if taken:
+        print(f"Pick other keys for hotkeys.{' and '.join(taken)} in {USER_CONFIG}, e.g.\n"
+              f'  [hotkeys]\n  toggle = "<Ctrl><Alt>space"\nthen run --setup again.')
+
+    config.STATE_DIR.mkdir(parents=True, exist_ok=True)
+    with config.LISTENER_LOG.open("a") as log:
+        subprocess.Popen(cmd, env=env, cwd=str(config.REPO), stdin=subprocess.DEVNULL,
+                         stdout=log, stderr=log, creationflags=win32.detached_flags())
+    for _ in range(50):
+        if winlisten.is_running():
+            break
+        time.sleep(0.1)
+    if winlisten.is_running():
+        print("tray listener running (the dot in the notification area)")
+    else:
+        print(f"the tray listener didn't start; see {config.LISTENER_LOG}")
 
 
 def _gnome_bind(path_id: str, name: str, command: str, binding: str) -> None:

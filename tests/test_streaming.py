@@ -27,10 +27,11 @@ def silence(seconds: float) -> np.ndarray:
 
 class Helpers(unittest.TestCase):
     def test_finds_data_after_list_chunk(self):
-        with tempfile.NamedTemporaryFile(suffix=".wav") as fh:
-            fh.write(FFMPEG_HEADER)
-            fh.flush()
-            self.assertEqual(wav_data_offset(Path(fh.name)), 78)
+        # A directory, not NamedTemporaryFile: Windows can't reopen that while it's open.
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "record.wav"
+            path.write_bytes(FFMPEG_HEADER)
+            self.assertEqual(wav_data_offset(path), 78)
 
     def test_cut_lands_in_the_pause(self):
         rng = np.random.default_rng(0)
